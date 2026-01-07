@@ -41,12 +41,15 @@ bool ADS1232::readRaw(int32_t &value, uint32_t timeoutMs) {
 
   // Read 24-bit two's complement
   int32_t result = 0;
+  // Sample DOUT after the SCLK falling edge (common for ADS123x)
   for (int i = 0; i < 24; i++) {
+    // Rising edge: shift
     digitalWrite(sclk_, HIGH);
-    delayMicroseconds(1);
-    result = (result << 1) | (digitalRead(dout_) & 0x01);
+    delayMicroseconds(2);
+    // Falling edge: data valid
     digitalWrite(sclk_, LOW);
-    delayMicroseconds(1);
+    delayMicroseconds(2);
+    result = (result << 1) | (digitalRead(dout_) & 0x01);
   }
 
   // One extra clock to finish the cycle/start next conversion
