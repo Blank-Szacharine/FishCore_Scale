@@ -1,36 +1,40 @@
 #pragma once
 
-// Pin configuration based on user wiring
-// ESP32 default I2C: SDA = GPIO21 (D21), SCL = GPIO22 (D22)
+// ---------------- I2C (LCD) ----------------
 #define I2C_SDA_PIN 21
 #define I2C_SCL_PIN 22
 
-// ADS1232 wiring
-#define ADS1232_DOUT_PIN 34  // D34 (input only)
-#define ADS1232_SCLK_PIN 4   // D4
+// ---------------- ADS1232 pins ----------------
+// Your wiring:
+#define ADS1232_DOUT_PIN 34
+#define ADS1232_SCLK_PIN 4
 
-// LCD parameters
+// OPTIONAL: If you wired ADS "A0" to an ESP32 GPIO, set it here.
+// If you DID NOT wire A0 to ESP32, set this to -1 and STRAP A0 physically to GND (CH1).
+#define ADS1232_A0_PIN   -1
+
+// OPTIONAL: If you wired PDWN to an ESP32 GPIO, set it here.
+// If you strapped PDWN to 3.3V, set to -1.
+#define ADS1232_PDWN_PIN -1
+
+// ---------------- LCD parameters ----------------
 #define LCD_COLS 20
 #define LCD_ROWS 4
 
-// Optional: Known common I2C addresses for PCF8574 LCD backpacks
-// We'll scan for these; first match wins.
-// 0x27 and 0x3F are the most common.
 #define LCD_ADDR_PRIMARY 0x27
 #define LCD_ADDR_SECONDARY 0x3F
 
-// Weight calibration
-// The ADS1232 outputs raw counts. To convert to grams, set this factor
-// after calibration (place a known weight and compute factor).
-// Default to 1.0 so raw counts are displayed as-is.
+// ---------------- Calibration / Units ----------------
+// Start at 1.0 for debugging.
+// Later, replace with your actual calibration factor after you calibrate using known weight.
 #define CALIBRATION_FACTOR 1.0f
 
-// Display unit configuration
-// If your CALIBRATION_FACTOR yields grams, set divisor to 1000.0f to display in kilograms.
-// The user requested to show unit as "kl". Adjust as needed.
-#define WEIGHT_UNIT_LABEL "kl"
+// Label + divisor:
+// If factor produces grams, divisor 1000 shows kg.
+// Fix label if you want:
+#define WEIGHT_UNIT_LABEL "kg"
 #define WEIGHT_UNIT_DIVISOR 1000.0f
 
-// Sampling / timeouts
+// ---------------- Sampling / timeouts ----------------
 #define ADS_READY_TIMEOUT_MS 500
 #define ADS_TARE_SAMPLES 16

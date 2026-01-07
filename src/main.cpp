@@ -5,7 +5,7 @@
 #include "modules/ads1232.h"
 
 LCDDisplay lcd;
-ADS1232 ads(ADS1232_DOUT_PIN, ADS1232_SCLK_PIN);
+ADS1232 ads(ADS1232_DOUT_PIN, ADS1232_SCLK_PIN, ADS1232_A0_PIN, ADS1232_PDWN_PIN);
 
 bool lcdOK = false;
 bool adsOK = false;
@@ -13,18 +13,23 @@ uint8_t lcdAddr = 0x00;
 
 void setup() {
   Serial.begin(115200);
-  delay(100);
+  delay(150);
 
-  // Initialize LCD and show splash
+  // LCD init + splash
   lcdOK = lcd.begin(Wire, lcdAddr);
   if (lcdOK) {
-    lcd.printLine(0, "Weighing Scale Initializing..");
+    lcd.printLine(0, "Weighing Scale Init...");
+    char buf[21];
+    snprintf(buf, sizeof(buf), "LCD:0x%02X", lcdAddr);
+    lcd.printLine(1, String(buf));
+  } else {
+    Serial.println("LCD FAIL");
   }
 
-  // Initialize ADS1232
+  // ADS init
   ads.begin();
+  ads.setChannel(1); // channel 1 by default (AINP1/AINN1)
 
-  // Check device availability
   adsOK = ads.isAvailable(ADS_READY_TIMEOUT_MS);
 
   String status;
@@ -32,25 +37,22 @@ void setup() {
   status += " , ";
   status += (lcdOK ? "LCD OK" : "LCD FAIL");
 
-  if (lcdOK) {
-    lcd.printLine(1, status);
-  }
+  if (lcdOK) lcd.printLine(2, status);
   Serial.println(status);
 
-  // If LCD wasn't up initially, try printing over Serial only
-
-  // If ADS OK, tare to zero
   if (adsOK) {
-    if (lcdOK) lcd.printLine(2, "Zeroing scale...");
+    if (lcdOK) lcd.printLine(3, "Zeroing (tare)...");
     ads.tare(ADS_TARE_SAMPLES);
+  } else {
+    if (lcdOK) lcd.printLine(3, "Check wiring/pins");
   }
 
   delay(500);
   if (lcdOK) {
-    lcd.printLine(0, "                    ");
-    lcd.printLine(1, "                    ");
-    lcd.printLine(2, "                    ");
-    lcd.printLine(3, "                    ");
+    lcd.printLine(0, "");
+    lcd.printLine(1, "");
+    lcd.printLine(2, "");
+    lcd.printLine(3, "");
   }
 }
 
@@ -60,10 +62,11 @@ void loop() {
     return;
   }
 
-  int32_t raw;
+  int32_t raw = 0;
   if (ads.readRaw(raw, ADS_READY_TIMEOUT_MS)) {
     int32_t tare = ads.offset();
     int32_t diff = raw - tare;
+
     float weight = ads.toWeight(raw);
     float displayWeight = weight / WEIGHT_UNIT_DIVISOR;
 
@@ -84,9 +87,13 @@ void loop() {
       snprintf(line3, sizeof(line3), "Raw:%12ld", (long)raw);
       lcd.printLine(3, String(line3));
     }
-    // Also log to Serial
-    Serial.printf("raw=%ld diff=%ld tare=%ld weight=%.6f (%s)\n", (long)raw, (long)diff, (long)tare, displayWeight, WEIGHT_UNIT_LABEL);
+
+    Serial.printf("raw=%ld diff=%ld tare=%ld weight=%.6f (%s)\n",
+                  (long)raw, (long)diff, (long)tare, displayWeight, WEIGHT_UNIT_LABEL);
+  } else {
+    // Helpful debug if you keep getting timeouts
+    Serial.printf("ADS timeout. DOUT=%d\n", digitalRead(ADS1232_DOUT_PIN));
   }
-  // At 10SPS (SPEED tied to GND), new data ~ every 100ms
+
   delay(50);
 }
