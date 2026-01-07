@@ -1,65 +1,96 @@
-#include "lcd_display.h"
-#include <Wire.h>
+#include "ads1232.h"
 #include "config.h"
 
-static bool probeI2CAddress(TwoWire &wire, uint8_t address) {
-  wire.beginTransmission(address);
-  return (wire.endTransmission() == 0);
-}
+ADS1232::ADS1232(uint8_t doutPin, uint8_t sclkPin, int8_t a0Pin, int8_t pdwnPin)
+    : dout_(doutPin), sclk_(sclkPin), a0_(a0Pin), pdwn_(pdwnPin) {}
 
-LCDDisplay::LCDDisplay() {}
+bool ADS1232::begin() {
+  pinMode(dout_, INPUT);
+  pinMode(sclk_, OUTPUT);
+  digitalWrite(sclk_, LOW);
 
-bool LCDDisplay::begin(TwoWire &wire, uint8_t &detectedAddress) {
-  wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-
-  const uint8_t candidates[] = {
-    LCD_ADDR_PRIMARY, LCD_ADDR_SECONDARY,
-    0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
-    0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F
-  };
-
-  uint8_t found = 0x00;
-  for (uint8_t addr : candidates) {
-    if (probeI2CAddress(wire, addr)) {
-      found = addr;
-      break;
-    }
+  if (a0_ >= 0) {
+    pinMode(a0_, OUTPUT);
+    digitalWrite(a0_, LOW);  // default CH1
+  }
+  if (pdwn_ >= 0) {
+    pinMode(pdwn_, OUTPUT);
+    digitalWrite(pdwn_, HIGH);  // power on
   }
 
-  if (found == 0x00) {
-    initialized_ = false;
-    return false;
-  }
-
-  address_ = found;
-  detectedAddress = found;
-
-  lcd_ = new LiquidCrystal_PCF8574(address_);
-  if (!lcd_) {
-    initialized_ = false;
-    return false;
-  }
-
-  lcd_->begin(LCD_COLS, LCD_ROWS);
-  lcd_->setBacklight(255);
-  lcd_->setCursor(0, 0);
-  initialized_ = true;
+  calibration_ = CALIBRATION_FACTOR;
   return true;
 }
 
-void LCDDisplay::clearRow(uint8_t row) {
-  if (!initialized_) return;
-  lcd_->setCursor(0, row);
-  for (int i = 0; i < LCD_COLS; i++) lcd_->print(" ");
+void ADS1232::setChannel(uint8_t ch) {
+  if (a0_ < 0) return; // strapped in hardware
+  // ch=1 -> A0 low, ch=2 -> A0 high
+  digitalWrite(a0_, (ch == 2) ? HIGH : LOW);
 }
 
-void LCDDisplay::printLine(uint8_t row, const String &text) {
-  if (!initialized_) return;
+bool ADS1232::waitReady(uint32_t timeoutMs) {
+  uint32_t start = millis();
+  while (millis() - start < timeoutMs) {
+    if (digitalRead(dout_) == LOW) return true;
+    delay(1);
+  }
+  return false;
+}
 
-  String t = text;
-  if ((int)t.length() > LCD_COLS) t = t.substring(0, LCD_COLS);
+inline void ADS1232::sclkHigh() { digitalWrite(sclk_, HIGH); }
+inline void ADS1232::sclkLow() { digitalWrite(sclk_, LOW); }
 
-  clearRow(row);
-  lcd_->setCursor(0, row);
-  lcd_->print(t);
+void ADS1232::clockPulse() {
+  sclkHigh();
+  delayMicroseconds(2);
+  sclkLow();
+  delayMicroseconds(2);
+}
+
+bool ADS1232::isAvailable(uint32_t timeoutMs) {
+  return waitReady(timeoutMs);
+}
+
+bool ADS1232::readRaw(int32_t &value, uint32_t timeoutMs) {
+  if (!waitReady(timeoutMs)) return false;
+
+  int32_t result = 0;
+  // Read 24 bits, sample DOUT after falling edge
+  for (int i = 0; i < 24; i++) {
+    sclkHigh();
+    delayMicroseconds(2);
+    sclkLow();
+    delayMicroseconds(2);
+    result = (result << 1) | (digitalRead(dout_) & 0x01);
+  }
+
+  // Extra clock to start next conversion
+  clockPulse();
+
+  // Sign-extend 24-bit two's complement
+  if (result & 0x800000) {
+    result |= 0xFF000000;
+  }
+
+  value = result;
+  return true;
+}
+
+bool ADS1232::tare(uint16_t samples) {
+  int64_t sum = 0;
+  int32_t v = 0;
+  uint16_t collected = 0;
+  for (uint16_t i = 0; i < samples; i++) {
+    if (!readRaw(v, ADS_READY_TIMEOUT_MS)) continue;
+    sum += v;
+    collected++;
+  }
+  if (collected == 0) return false;
+  offset_ = static_cast<int32_t>(sum / collected);
+  return true;
+}
+
+float ADS1232::toWeight(int32_t raw) const {
+  int32_t corrected = raw - offset_;
+  return static_cast<float>(corrected) * calibration_;
 }
