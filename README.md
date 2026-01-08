@@ -10,18 +10,18 @@ LCD (20x4, PCF8574 backpack)
 - VCC -> VIN (5V)
 - GND -> GND
 
-ADS1232 (MCU ADS1232 module) to load cell
+ADS1232 (to ESP32 and load cell)
 - DOUT -> ESP32 D34 (GPIO34)
 - SCLK -> ESP32 D4 (GPIO4)
-- REFP -> E+ (load cell)
-- GND  -> E- (load cell)
+- REFP -> to 3.3V and E+ (load cell)
+- GND  -> ESP32 GND and E- (load cell)
 - AINP -> S+ (load cell)
-- GND  -> S- (load cell)
-- CLKIN -> GND
-- GAIN0 -> GND
-- GAIN1 -> GND
+- AINN -> S- (load cell)
+- GAIN0 -> 3.3V (gain strap)
+- GAIN1 -> 3.3V (gain strap)
 - SPEED -> GND (10 SPS)
 - PDWN  -> 3.3V (always on)
+- A0    -> GND (Channel 1)
 
 ## Boot flow
 1. Display: `Weighing Scale Initializing..`
