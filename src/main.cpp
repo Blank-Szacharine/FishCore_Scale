@@ -48,7 +48,7 @@ void setup() {
   // Initialize LCD and show basic status
   lcdOK = lcd.begin(Wire, lcdAddr);
   if (lcdOK) {
-    lcd.printLine(0, "Scale is Calibrating");
+    lcd.printLine(0, "Calibrating");
     if (LCD_ROWS > 1) lcd.printLine(1, "Please wait...");
   } else {
     Serial.println("LCD FAIL");
