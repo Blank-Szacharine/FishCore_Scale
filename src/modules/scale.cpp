@@ -31,30 +31,33 @@ bool ScaleManager::begin() {
   g_scale.setCalibrationFactor(calFactor_);
 
   // Tare on startup to ensure zeroed weight (multiple attempts if needed)
-  const uint16_t tareSamples = 48;  // ~5s at 10SPS
-  const float verifyGrams = 80.0f;  // accept +/-80g residual
-  const int maxAttempts = 4;
+  const uint16_t tareSamples = 64;   // ~6s at 10SPS
+  const float verifyKg = 0.10f;      // accept +/-100 g residual
+  const int maxAttempts = 5;
 
   for (int attempt = 0; attempt < maxAttempts; ++attempt) {
     g_scale.calculateZeroOffset(tareSamples);
-    delay(100);
-
-    // Verify using raw counts relative to zero offset to avoid unit mismatches
     long z = g_scale.getZeroOffset();
-    long sum = 0;
+    g_scale.setZeroOffset(z);  // ensure applied for weight conversions
+    delay(120);
+
+    // Verify using weight readings (already scaled and offset-corrected)
+    float sumKg = 0.0f;
     const uint8_t verifyN = 16;
     for (uint8_t i = 0; i < verifyN; ++i) {
-      sum += g_scale.getReading();
-      delay(6);
+      sumKg += (g_scale.getWeight(true) / 1000.0f); // library returns grams
+      delay(8);
     }
-    long avgCounts = sum / verifyN;
-    long diffCounts = labs(avgCounts - z);
-
-    long thresholdCounts = (long)(calFactor_ * verifyGrams); // counts corresponding to verifyGrams
-    if (diffCounts <= thresholdCounts) {
+    float avgKg = sumKg / verifyN;
+    if (fabsf(avgKg) <= verifyKg) {
       break;
     }
   }
+  zeroOffset_ = g_scale.getZeroOffset();
+  g_scale.setZeroOffset(zeroOffset_);
+
+  // Final small micro-tare to cancel any residual drift after warm-up
+  g_scale.calculateZeroOffset(16);
   zeroOffset_ = g_scale.getZeroOffset();
   g_scale.setZeroOffset(zeroOffset_);
 
