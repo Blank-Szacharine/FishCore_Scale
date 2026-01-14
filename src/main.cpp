@@ -37,8 +37,7 @@ bool initScale() {
     lcdStatus("LOAD CELL NOT FOUND", "Check wiring & power");
     return false;
   }
-  lcdStatus("LOAD CELL Present", "NAU7802 ready");
-  delay(800);
+  // Calibration completed successfully
   return true;
 }
 
@@ -49,16 +48,15 @@ void setup() {
   // Initialize LCD and show basic status
   lcdOK = lcd.begin(Wire, lcdAddr);
   if (lcdOK) {
-    lcd.printLine(0, "FishCore Scale");
-    char buf[21];
-    snprintf(buf, sizeof(buf), "LCD: 0x%02X", lcdAddr);
-    lcd.printLine(1, String(buf));
+    lcd.printLine(0, "Weighing Scale Calibrating");
+    if (LCD_ROWS > 1) lcd.printLine(1, "Please wait...");
   } else {
     Serial.println("LCD FAIL");
   }
 
   // Initialize scale (module tares automatically)
   if (!initScale()) return; // message shown already
+  if (lcdOK && LCD_ROWS > 1) lcd.printLine(1, ""); // clear the hint line
 }
 
 void loop() {
@@ -70,7 +68,7 @@ void loop() {
   // Read and display weight (kg only)
   float kg = scale.getWeightKg(true);
   char l0[21];
-  snprintf(l0, sizeof(l0), "Weight: %7.3f kg", kg);
+  snprintf(l0, sizeof(l0), "Weight %6.2f kg", kg);
   lcd.printLine(0, String(l0));
 
   // Optional serial control: 't' to re-tare (USB not required for normal use)

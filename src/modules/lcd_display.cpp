@@ -39,6 +39,7 @@ bool LCDDisplay::begin(TwoWire &wire, uint8_t &detectedAddress) {
     lcd_->begin(LCD_COLS, LCD_ROWS);
     lcd_->setBacklight(255);
     lcd_->setCursor(0, 0);
+    lcd_->clear();
     initialized_ = true;
   } else {
     initialized_ = false;
