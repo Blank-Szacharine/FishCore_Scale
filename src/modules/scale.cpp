@@ -20,34 +20,43 @@ bool ScaleManager::begin() {
   g_scale.calibrateAFE();
 
   // Allow AFE to settle and discard early conversions
-  delay(1200);
-  for (int i = 0; i < 6; ++i) {
+  delay(2000);
+  for (int i = 0; i < 16; ++i) {
     (void)g_scale.getReading();
-    delay(10);
+    delay(8);
   }
 
+  // Apply default calibration factor upfront so any derived checks use correct scaling
+  calFactor_ = SCALE_CAL_FACTOR_DEFAULT;
+  g_scale.setCalibrationFactor(calFactor_);
+
   // Tare on startup to ensure zeroed weight (multiple attempts if needed)
-  const uint16_t tareSamples = 32;  // ~3s at 10SPS
-  for (int attempt = 0; attempt < 3; ++attempt) {
+  const uint16_t tareSamples = 48;  // ~5s at 10SPS
+  const float verifyGrams = 80.0f;  // accept +/-80g residual
+  const int maxAttempts = 4;
+
+  for (int attempt = 0; attempt < maxAttempts; ++attempt) {
     g_scale.calculateZeroOffset(tareSamples);
-    delay(50);
-    float checkG = 0.0f;
-    const uint8_t verifyN = 8;
+    delay(100);
+
+    // Verify using raw counts relative to zero offset to avoid unit mismatches
+    long z = g_scale.getZeroOffset();
+    long sum = 0;
+    const uint8_t verifyN = 16;
     for (uint8_t i = 0; i < verifyN; ++i) {
-      checkG += g_scale.getWeight(true);
-      delay(5);
+      sum += g_scale.getReading();
+      delay(6);
     }
-    checkG /= verifyN;
-    if (fabsf(checkG) < 50.0f) { // within 50 grams of zero
+    long avgCounts = sum / verifyN;
+    long diffCounts = labs(avgCounts - z);
+
+    long thresholdCounts = (long)(calFactor_ * verifyGrams); // counts corresponding to verifyGrams
+    if (diffCounts <= thresholdCounts) {
       break;
     }
   }
   zeroOffset_ = g_scale.getZeroOffset();
   g_scale.setZeroOffset(zeroOffset_);
-
-  // Apply default calibration factor (counts per gram expected by library)
-  calFactor_ = SCALE_CAL_FACTOR_DEFAULT;
-  g_scale.setCalibrationFactor(calFactor_);
 
   initialized_ = true;
   return true;
