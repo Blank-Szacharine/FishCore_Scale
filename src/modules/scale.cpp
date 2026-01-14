@@ -19,8 +19,29 @@ bool ScaleManager::begin() {
   g_scale.setChannel(NAU7802_CHANNEL_1);
   g_scale.calibrateAFE();
 
-  // Tare on startup to ensure zeroed weight
-  g_scale.calculateZeroOffset(64);
+  // Allow AFE to settle and discard early conversions
+  delay(1200);
+  for (int i = 0; i < 6; ++i) {
+    (void)g_scale.getReading();
+    delay(10);
+  }
+
+  // Tare on startup to ensure zeroed weight (multiple attempts if needed)
+  const uint16_t tareSamples = 32;  // ~3s at 10SPS
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    g_scale.calculateZeroOffset(tareSamples);
+    delay(50);
+    float checkG = 0.0f;
+    const uint8_t verifyN = 8;
+    for (uint8_t i = 0; i < verifyN; ++i) {
+      checkG += g_scale.getWeight(true);
+      delay(5);
+    }
+    checkG /= verifyN;
+    if (fabsf(checkG) < 50.0f) { // within 50 grams of zero
+      break;
+    }
+  }
   zeroOffset_ = g_scale.getZeroOffset();
   g_scale.setZeroOffset(zeroOffset_);
 

@@ -15,6 +15,6 @@ class ScaleManager {
 
  private:
   long zeroOffset_ = 0;
-  float calFactor_ = -.005f;
+  float calFactor_ = -.006f;
   bool initialized_ = false;
 };
