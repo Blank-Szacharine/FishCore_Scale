@@ -37,11 +37,10 @@ pio run -t upload
 pio device monitor -b 115200
 ```
 
-### Calibration via Serial
-- After flashing and opening the Serial Monitor (115200), follow on‑screen prompts:
-	- Remove all weight for taring.
-	- Place a known weight, then type its value in grams and press Enter.
-- Calibration values are saved automatically. Commands: 't' to re‑tare, 'c' to recalibrate.
+### Calibration (No USB required)
+- On first boot the device automatically tares (remove all weight) and applies a default calibration factor.
+- Set the default factor in include/config.h: `SCALE_CAL_FACTOR_DEFAULT` (grams per count).
+- Values are saved automatically. Optional Serial command: 't' to re‑tare when connected.
 
 ## Files
 - include/config.h

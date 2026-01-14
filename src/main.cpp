@@ -81,9 +81,8 @@ bool initScale() {
   return true;
 }
 
-void runCalibration() {
+void runTareAndApplyDefaultFactor() {
   lcdStatus("LOAD CELL CALIBRATING", "Remove all weight", "Taring in 3...");
-  Serial.println("Calibration start: remove all weight from the scale.");
   delay(1000);
   lcd.printLine(2, "Taring in 2...");
   delay(1000);
@@ -94,28 +93,13 @@ void runCalibration() {
   scale.calculateZeroOffset(64);
   zeroOffset = scale.getZeroOffset();
 
-  lcdStatus("LOAD CELL CALIBRATING", "Place known weight", "Enter grams via USB");
-  Serial.println("Place a known weight on the scale.");
-  Serial.println("Then type its mass in grams and press Enter.");
-
-  float known = NAN;
-  while (isnan(known)) {
-    if (Serial.available()) {
-      known = Serial.parseFloat();
-      if (known <= 0.0f) known = NAN; // invalid
-    }
-    delay(50);
-  }
-
-  lcd.printLine(2, "Measuring...      ");
+  // Apply default calibration factor from config
+  calFactor = SCALE_CAL_FACTOR_DEFAULT;
   scale.setZeroOffset(zeroOffset);
-  scale.calculateCalibrationFactor(known, 64);
-  calFactor = scale.getCalibrationFactor();
+  scale.setCalibrationFactor(calFactor);
 
   saveCalibrationToNVS(zeroOffset, calFactor);
-  lcdStatus("LOAD CELL Present", "Saved to memory", "Ready to weigh");
-  Serial.print("Zero offset: "); Serial.println(zeroOffset);
-  Serial.print("Cal factor (g/count): "); Serial.println(calFactor, 6);
+  lcdStatus("LOAD CELL Present", "Calibration saved", "Ready to weigh");
   delay(1200);
 }
 
@@ -140,7 +124,7 @@ void setup() {
   // Load or perform calibration
   bool hasCal = loadCalibrationFromNVS();
   if (!hasCal) {
-    runCalibration();
+    runTareAndApplyDefaultFactor();
   } else {
     scale.setZeroOffset(zeroOffset);
     scale.setCalibrationFactor(calFactor);
@@ -158,20 +142,30 @@ void loop() {
   // Read and display weight
   float grams = scale.getWeight(true); // averaged
 
+  // Show as kilograms + grams remainder on line 0
+  long rounded = (long)(grams + (grams >= 0.0f ? 0.5f : -0.5f));
+  long kg = rounded / 1000L;
+  long remG = labs(rounded - kg * 1000L);
+
   char l0[21];
-  snprintf(l0, sizeof(l0), "Weight: %8.2f g", grams);
+  snprintf(l0, sizeof(l0), "Wt: %ldkg %3ldg", kg, remG);
   lcd.printLine(0, String(l0));
 
-  // Optional: show quick status lines
+  // Also show exact grams on line 1
   char l1[21];
-  snprintf(l1, sizeof(l1), "Zero:%9ld", zeroOffset);
+  snprintf(l1, sizeof(l1), "= %10.2f g", grams);
   lcd.printLine(1, String(l1));
 
+  // Status lines
   char l2[21];
-  snprintf(l2, sizeof(l2), "Cal:%10.6f", calFactor);
+  snprintf(l2, sizeof(l2), "Zero:%9ld", zeroOffset);
   lcd.printLine(2, String(l2));
 
-  // Simple serial controls: 't' to re-tare, 'c' to recalibrate
+  char l3[21];
+  snprintf(l3, sizeof(l3), "Cal:%10.6f", calFactor);
+  lcd.printLine(3, String(l3));
+
+  // Optional serial control: 't' to re-tare (USB not required for normal use)
   if (Serial.available()) {
     char cmd = (char)Serial.read();
     if (cmd == 't' || cmd == 'T') {
@@ -181,8 +175,6 @@ void loop() {
       scale.setZeroOffset(zeroOffset);
       saveCalibrationToNVS(zeroOffset, calFactor);
       lcd.printLine(3, "Tare done               ");
-    } else if (cmd == 'c' || cmd == 'C') {
-      runCalibration();
     }
   }
 

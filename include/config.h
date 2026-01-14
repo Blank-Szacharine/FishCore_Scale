@@ -10,6 +10,12 @@
 #define SCALE_SCL_PIN 17
 #define SCALE_DRDY_PIN 27
 
+// ---------------- Calibration ----------------
+// Default calibration factor (grams per ADC count).
+// Set this to match your load cell and amplifier scaling.
+// Example: if 1000 counts = 500 g, factor = 0.5.
+#define SCALE_CAL_FACTOR_DEFAULT 1.0f
+
 // ---------------- LCD parameters ----------------
 #define LCD_COLS 20
 #define LCD_ROWS 4
