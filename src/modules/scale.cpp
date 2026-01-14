@@ -15,7 +15,7 @@ bool ScaleManager::begin() {
   }
 
   g_scale.setGain(NAU7802_GAIN_128);
-  g_scale.setSampleRate(NAU7802_SPS_40);
+  g_scale.setSampleRate(NAU7802_SPS_10); // lower SPS for better stability
   g_scale.setChannel(NAU7802_CHANNEL_1);
   g_scale.calibrateAFE();
 
@@ -24,7 +24,7 @@ bool ScaleManager::begin() {
   zeroOffset_ = g_scale.getZeroOffset();
   g_scale.setZeroOffset(zeroOffset_);
 
-  // Apply default calibration factor
+  // Apply default calibration factor (counts per gram expected by library)
   calFactor_ = SCALE_CAL_FACTOR_DEFAULT;
   g_scale.setCalibrationFactor(calFactor_);
 
@@ -41,6 +41,15 @@ void ScaleManager::tare(uint16_t samples) {
 
 float ScaleManager::getWeightKg(bool averaged) {
   if (!initialized_) return 0.0f;
-  float grams = g_scale.getWeight(true); // averaged flag is not used by lib; true => allow negative
-  return grams / 1000.0f;
+  const uint8_t samples = averaged ? 8 : 1;
+  float sumGrams = 0.0f;
+  for (uint8_t i = 0; i < samples; ++i) {
+    sumGrams += g_scale.getWeight(true); // returns grams using current cal factor
+    delay(2);
+  }
+  float grams = sumGrams / samples;
+  float kg = grams / 1000.0f;
+  if (kg < 0.0f) kg = -kg; // ensure positive orientation for display
+  if (fabsf(kg) < 0.002f) kg = 0.0f; // deadband ~2g
+  return kg;
 }
