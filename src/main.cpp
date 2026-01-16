@@ -1,6 +1,7 @@
 // ESP32 + NAU7802 load cell with 20x4 I2C LCD
 #include <Arduino.h>
 #include <Wire.h>
+#include <math.h>
 #include "config.h"
 #include "modules/lcd_display.h"
 #include "modules/scale.h"
@@ -58,9 +59,13 @@ void setup() {
   if (!initScale()) return; // message shown already
   if (lcdOK && LCD_ROWS > 1) lcd.printLine(1, ""); // clear the hint line
 
-  // Force zero before the first weight is shown
+  // Force zero before the first weight is shown, retry if needed
   if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "Zeroing...");
-  scale.tare(64);
+  int attempts = 0;
+  do {
+    scale.tare(128);
+    delay(50);
+  } while (fabsf(scale.getWeightKg(true)) > 0.02f && ++attempts < 3);
   if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "Ready             ");
 }
 
