@@ -17,7 +17,7 @@
 // Calibration factor meaning: ADC counts per gram (not grams per count).
 // Start with ~15.0 for many common 5–50kg load cells on NAU7802.
 // Increase if your reading is too low; decrease if too high.
-#define SCALE_CAL_FACTOR_DEFAULT 15.0f
+#define SCALE_CAL_FACTOR_DEFAULT 13.48f
 
 // ---------------- LCD parameters ----------------
 #define LCD_COLS 20

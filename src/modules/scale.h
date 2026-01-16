@@ -12,7 +12,7 @@ class ScaleManager {
 
  private:
   long zeroOffset_ = 0;
-  float calFactor_ = -0.0f;
+  float calFactor_ = 0.0f;
   bool initialized_ = false;
 
   // Checks which direction is positive and flips calibration sign if needed.
