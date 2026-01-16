@@ -88,14 +88,6 @@ void loop() {
       lcd.printLine(3, "Tare...                ");
       scale.tare(64);
       lcd.printLine(3, "Tare done               ");
-    } else if (cmd == 'c' || cmd == 'C') {
-      if (SCALE_KNOWN_WEIGHT_KG > 0.1f) {
-        lcd.printLine(3, "Calibrating...           ");
-        bool ok = scale.calibrateKnownKg(SCALE_KNOWN_WEIGHT_KG, 64);
-        lcd.printLine(3, ok ? "Cal done                 " : "Cal failed               ");
-      } else {
-        lcd.printLine(3, "Set KNOWN_WEIGHT in cfg  ");
-      }
     }
   }
 
