@@ -54,10 +54,14 @@ bool ScaleManager::begin() {
 void ScaleManager::tare(uint16_t samples) {
   if (!g_scale.isConnected()) return;
 
-  g_scale.calculateZeroOffset(samples);
+  // At 10SPS, 128 samples ~12.8s. Give it enough time.
+  const uint32_t timeoutMs = (uint32_t)samples * 120 + 500; // ~100ms/sample + margin
+
+  g_scale.calculateZeroOffset(samples, timeoutMs);
   zeroOffset_ = g_scale.getZeroOffset();
   g_scale.setZeroOffset(zeroOffset_);
 }
+
 
 void ScaleManager::autoFixDirection() {
   // We detect direction by checking raw delta from the ADC (independent of calibration).
