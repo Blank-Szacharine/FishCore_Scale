@@ -19,6 +19,11 @@
 // Increase if your reading is too low; decrease if too high.
 #define SCALE_CAL_FACTOR_DEFAULT 15.0f
 
+// Optional: known reference weight for quick calibration (kg)
+// Set to your calibration mass (e.g., 6.0f). Then send 'c' over serial
+// while the mass is on the scale to compute the exact calibration factor.
+#define SCALE_KNOWN_WEIGHT_KG 0.0f
+
 // ---------------- LCD parameters ----------------
 #define LCD_COLS 20
 #define LCD_ROWS 4

@@ -60,6 +60,8 @@ void ScaleManager::tare(uint16_t samples) {
   g_scale.calculateZeroOffset(samples, timeoutMs);
   zeroOffset_ = g_scale.getZeroOffset();
   g_scale.setZeroOffset(zeroOffset_);
+  // After a fresh tare, we may need to re-check orientation on first real load
+  orientationChecked_ = false;
 }
 
 
@@ -94,11 +96,41 @@ void ScaleManager::autoFixDirection() {
   if (gramsNow < -5.0f) {                   // more than -5g = likely inverted
     calFactor_ = -fabsf(calFactor_);
     g_scale.setCalibrationFactor(calFactor_);
+    orientationChecked_ = true;
   }
 
   // (Optional) If you want to log raw drift:
   (void)base;
   (void)later;
+}
+
+bool ScaleManager::calibrateKnownKg(float knownKg, uint16_t samples) {
+  if (!initialized_) return false;
+  if (knownKg <= 0.1f) return false; // require positive known mass
+
+  // Average a set of raw readings with the known mass on the scale
+  long sum = 0;
+  for (uint16_t i = 0; i < samples; i++) {
+    sum += g_scale.getReading();
+    delay(10);
+  }
+  long avg = sum / (long)samples;
+
+  // Delta from zero offset corresponds to known mass
+  long delta = avg - zeroOffset_;
+  float knownGrams = knownKg * 1000.0f;
+  if (labs(delta) < 100) return false; // too small delta; likely no load
+
+  // counts per gram
+  calFactor_ = (float)delta / knownGrams;
+  g_scale.setCalibrationFactor(calFactor_);
+
+  // Orientation is now defined by the sign of delta.
+  orientationChecked_ = true;
+
+  // Small stabilization
+  delay(50);
+  return true;
 }
 
 float ScaleManager::getWeightKg(bool averaged) {
@@ -114,6 +146,21 @@ float ScaleManager::getWeightKg(bool averaged) {
 
   float grams = sumGrams / samples;
   float kg = grams / 1000.0f;
+
+  // If first significant load appears negative, flip calibration sign once
+  if (!orientationChecked_ && fabsf(kg) > 0.2f && kg < 0.0f) {
+    calFactor_ = -calFactor_;
+    g_scale.setCalibrationFactor(calFactor_);
+    // Recompute with new sign
+    sumGrams = 0.0f;
+    for (uint8_t i = 0; i < samples; i++) {
+      sumGrams += g_scale.getWeight(true);
+      delay(2);
+    }
+    grams = sumGrams / samples;
+    kg = grams / 1000.0f;
+    orientationChecked_ = true;
+  }
 
   // deadband near zero
   if (fabsf(kg) < 0.002f) kg = 0.0f;
