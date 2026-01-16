@@ -57,6 +57,15 @@ void setup() {
   // Initialize scale (module tares automatically)
   if (!initScale()) return; // message shown already
   if (lcdOK && LCD_ROWS > 1) lcd.printLine(1, ""); // clear the hint line
+
+  // If residual weight is present after opening, reset to zero
+  // This makes whatever is currently on the scale the baseline (tare)
+  float initialKg = scale.getWeightKg(true);
+  if (fabs(initialKg) > 0.005f) { // >5g considered non-zero
+    if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "Zeroing...");
+    scale.tare(64);
+    if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "Ready             ");
+  }
 }
 
 void loop() {
