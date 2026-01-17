@@ -30,4 +30,4 @@
 // Shares the same I2C bus as the LCD on GPIO21/22
 #define RFID2_ADDR_DEFAULT 0x28
 #define RFID2_ADDR_FALLBACK 0x29
-
+#define RFID_RST_PIN 255
