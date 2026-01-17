@@ -91,6 +91,11 @@ void setup() {
   float zeroKg = scale.getWeightKg(true);
   scaleReady = (fabsf(zeroKg) <= 0.02f);
   if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, scaleReady ? "Ready             " : "Zero failed       ");
+  // After ready, set ID label on row 1 and clear row 2
+  if (scaleReady) {
+    if (lcdOK && LCD_ROWS > 1) lcd.printLine(1, "ID:");
+    if (lcdOK && LCD_ROWS > 2) lcd.printLine(2, "                    ");
+  }
   if (!scaleReady) Serial.println("Zeroing did not reach threshold");
 }
 
@@ -100,36 +105,35 @@ void loop() {
     return;
   }
 
-  // Read and display weight (kg only)
+  // Read and display weight (kg only) on row 0
   float kg = scale.getWeightKg(true);
   char l0[21];
   snprintf(l0, sizeof(l0), "Weight %6.2f kg", kg);
   lcd.printLine(0, String(l0));
 
-  // RFID: only show ID after zeroing; update LCD only on change
-  if (rfidOK && scaleReady) {
-    String id;
-    bool changed = rfid.poll(id);
-    if (changed) {
-      if (id.length()) {
-        lcd.printLine(1, "ID: " + id);
-      } else {
-        if (LCD_ROWS > 1) lcd.printLine(1, "                    "); // clear when tag removed
+  // RFID: after zeroing, keep "ID:" on row 1 and update row 2 with value
+  if (scaleReady) {
+    if (lcdOK && LCD_ROWS > 1) lcd.printLine(1, "ID:");
+    if (rfidOK) {
+      String id;
+      bool changed = rfid.poll(id);
+      if (changed) {
+        if (id.length()) {
+          if (lcdOK && LCD_ROWS > 2) lcd.printLine(2, id);
+        } else {
+          if (lcdOK && LCD_ROWS > 2) lcd.printLine(2, "                    "); // clear when tag removed
+        }
+      }
+    } else {
+      // Retry RFID init periodically (no LCD spam; label remains)
+      static unsigned long lastRetry = 0;
+      if (millis() - lastRetry > 1000) {
+        lastRetry = millis();
+        rfidOK = rfid.begin(Wire);
+        if (rfidOK) Serial.println("RFID reinitialized");
       }
     }
-  } else if (!rfidOK) {
-    // Retry RFID init periodically (do not use LCD until ready)
-    static unsigned long lastRetry = 0;
-    if (millis() - lastRetry > 1000) {
-      lastRetry = millis();
-      rfidOK = rfid.begin(Wire);
-      if (rfidOK) Serial.println("RFID reinitialized");
-    }
-  } else if (LCD_ROWS > 1 && !scaleReady) {
-    // Before zeroing, keep line 2 blank (readiness was shown in setup)
-    lcd.printLine(1, "                    ");
   }
-
   // Optional serial control: 't' to re-tare
   if (Serial.available()) {
     char cmd = (char)Serial.read();
@@ -139,7 +143,11 @@ void loop() {
       float zeroKg2 = scale.getWeightKg(true);
       scaleReady = (fabsf(zeroKg2) <= 0.02f);
       lcd.printLine(3, scaleReady ? "Tare done               " : "Tare not zero            ");
-      if (!scaleReady && LCD_ROWS > 1) lcd.printLine(1, "                    ");
+      // Restore ID label/value area after tare
+      if (scaleReady) {
+        if (lcdOK && LCD_ROWS > 1) lcd.printLine(1, "ID:");
+        if (lcdOK && LCD_ROWS > 2) lcd.printLine(2, "                    ");
+      }
     }
   }
 
