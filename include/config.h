@@ -25,4 +25,9 @@
 
 #define LCD_ADDR_PRIMARY 0x27
 #define LCD_ADDR_SECONDARY 0x3F
- 
+
+// ---------------- RFID2 (WS1850S) ----------------
+// Shares the same I2C bus as the LCD on GPIO21/22
+#define RFID2_ADDR_DEFAULT 0x28
+#define RFID2_ADDR_FALLBACK 0x29
+

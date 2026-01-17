@@ -5,6 +5,7 @@
 #include "config.h"
 #include "modules/lcd_display.h"
 #include "modules/scale.h"
+#include "modules/rfid2.h"
 
 // LCD on default I2C (pins from config.h)
 LCDDisplay lcd;
@@ -13,6 +14,10 @@ uint8_t lcdAddr = 0x00;
 
 // Scale manager encapsulates NAU7802 logic
 ScaleManager scale;
+
+// RFID2 on same I2C bus as LCD
+RFID2 rfid;
+bool rfidOK = false;
 
 static void showCentered(uint8_t row, const String &text) {
   // Simple helper to center small messages on the LCD
@@ -55,6 +60,12 @@ void setup() {
     Serial.println("LCD FAIL");
   }
 
+  // Initialize RFID2 on the same Wire bus
+  rfidOK = rfid.begin(Wire);
+  if (lcdOK && LCD_ROWS > 1) {
+    lcd.printLine(1, rfidOK ? "ID: -" : "RFID not found");
+  }
+
   // Initialize scale (module tares automatically)
   if (!initScale()) return; // message shown already
   if (lcdOK && LCD_ROWS > 1) lcd.printLine(1, ""); // clear the hint line
@@ -80,6 +91,15 @@ void loop() {
   char l0[21];
   snprintf(l0, sizeof(l0), "Weight %6.2f kg", kg);
   lcd.printLine(0, String(l0));
+
+  // Poll RFID and show ID on row 1
+  if (rfidOK) {
+    String id;
+    bool changed = rfid.poll(id);
+    if (changed || id.length() == 0) {
+      lcd.printLine(1, id.length() ? ("ID: " + id) : "ID: -");
+    }
+  }
 
   // Optional serial control: 't' to re-tare (USB not required for normal use)
   if (Serial.available()) {

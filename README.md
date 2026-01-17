@@ -42,7 +42,15 @@ pio device monitor -b 115200
 - Set the default factor in include/config.h: `SCALE_CAL_FACTOR_DEFAULT` (grams per count).
 - Values are saved automatically. Optional Serial command: 't' to re‑tare when connected.
 
+## RFID2 (WS1850S) Support
+- Shares the same I²C bus as the LCD: SDA -> GPIO21, SCL -> GPIO22
+- Default address: 0x28 (configurable in include/config.h)
+- The UID is shown on LCD row 1 (below the weight).
+- Note: readUid implementation is generic. For robust UID reads, replace it with the proper WS1850S command frame or use the official M5Stack UNIT RFID2 library.
+
 ## Files
 - include/config.h
 - src/modules/lcd_display.{h,cpp}
+- src/modules/rfid2.{h,cpp}
+- src/modules/scale.cpp
 - src/main.cpp
