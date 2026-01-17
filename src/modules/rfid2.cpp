@@ -1,20 +1,21 @@
 #include "rfid2.h"
 
-// Share the same bus as LCD; make sure Wire is already begun.
+RFID2::RFID2() = default;
+
 bool RFID2::begin(TwoWire &wire, uint8_t addr) {
   wire_ = &wire;
   addr_ = addr;
+  // Share the same bus as LCD; make sure Wire is already begun.
   connected_ = probe_(addr_);
   if (!connected_) {
+    // Try a fallback address if needed
     connected_ = probe_(RFID2_ADDR_FALLBACK);
     if (connected_) addr_ = RFID2_ADDR_FALLBACK;
   }
   return connected_;
 }
 
-bool RFID2::isConnected() const {
-  return connected_;
-}
+bool RFID2::isConnected() const { return connected_; }
 
 // Poll for a tag. Returns true when a new/non-empty ID is read.
 bool RFID2::poll(String &id) {
@@ -31,9 +32,7 @@ bool RFID2::poll(String &id) {
   return false;
 }
 
-const String &RFID2::lastId() const {
-  return lastId_;
-}
+const String &RFID2::lastId() const { return lastId_; }
 
 bool RFID2::probe_(uint8_t a) {
   wire_->beginTransmission(a);
@@ -42,9 +41,7 @@ bool RFID2::probe_(uint8_t a) {
 
 bool RFID2::readUid_(String &out) {
   // TODO: Replace this with WS1850S-specific command to fetch UID.
-  // Placeholder strategy: try to read a status/UID buffer.
-  // If your module requires a command, write the command frame before requesting.
-  // Example (pseudo):
+  // Example flow:
   // wire_->beginTransmission(addr_);
   // wire_->write(0x01); // CMD_GET_UID (replace per datasheet)
   // wire_->endTransmission();
