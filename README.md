@@ -48,6 +48,29 @@ pio device monitor -b 115200
 - The UID is shown on LCD row 1 (below the weight).
 - Note: readUid implementation is generic. For robust UID reads, replace it with the proper WS1850S command frame or use the official M5Stack UNIT RFID2 library.
 
+## Internet
+- Configure WiFi SSID/PASS in include/config.h.
+- LCD shows “Internet Ready...” when connected.
+
+## Process Flow
+1. Line 0: “Calibrating...”
+2. Line 1: “RFID Ready...”
+3. Line 2: “Internet Ready...”
+4. Clear, then Line 3: “Zeroing...”
+5. After ready: show live weight in kg on Line 0.
+6. If weight detected: Line 3 “Weighing...” until stable.
+7. When stable: keep weight; Line 2 “Please Scan The ID”.
+8. After scan: Line 1 “Sending Data please Wait....”; Line 2 “Please Remove The weight..”.
+9. When weight returns to zero: clear prompts and return to live weight.
+10. If no ID scanned and weight returns to zero for 5 seconds: reset to live weight.
+
+## Display
+- Very small values are clamped to 0.00 to avoid “-0.00 kg”.
+
+## Tuning
+- Detection/stability thresholds are in include/config.h:
+  - WEIGHT_DETECT_THRESHOLD_KG, ZERO_THRESHOLD_KG, STABLE_STDDEV_KG, STABLE_MIN_MS, NO_ID_ZERO_TIMEOUT_MS.
+
 ## Files
 - include/config.h
 - src/modules/lcd_display.{h,cpp}
