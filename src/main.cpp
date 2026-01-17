@@ -93,20 +93,20 @@ static bool connectWifi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 6000) {
-    delay(200);
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 2500) { // shortened
+    delay(150);
   }
   return WiFi.status() == WL_CONNECTED;
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(150);
+  delay(100);
 
-  // Init I2C first, slower for compatibility
+  // Init I2C
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   Wire.setClock(100000);
-  delay(50);
+  delay(20);
 
   // Initialize LCD
   lcdOK = lcd.begin(Wire, lcdAddr);
@@ -117,14 +117,14 @@ void setup() {
     Serial.println("LCD FAIL");
   }
 
-  // Initialize RFID2 and show readiness on line 2 (row 1)
-  delay(30);
+  // Initialize RFID2 (status on line 1)
+  delay(10);
   rfidOK = rfid.begin(Wire);
   if (lcdOK && LCD_ROWS > 1) {
     lcd.printLine(1, rfidOK ? "RFID Ready..." : "RFID Not Found");
   }
 
-  // Connect to WiFi and show status on row 2
+  // Connect to WiFi and show status on line 2
   wifiOK = connectWifi();
   if (lcdOK && LCD_ROWS > 2) {
     lcd.printLine(2, wifiOK ? "Internet Ready..." : "Internet Not Ready");
@@ -132,32 +132,31 @@ void setup() {
 
   // Initialize scale (module tares automatically)
   if (!initScale()) return;
-  // Clear status and show Zeroing...
-  if (lcdOK && LCD_ROWS > 0) lcd.printLine(0, "");
-  if (lcdOK && LCD_ROWS > 1) lcd.printLine(1, "");
-  if (lcdOK && LCD_ROWS > 2) lcd.printLine(2, "");
-  if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "Zeroing...");
 
-  // Force zero before first weight shown, retry if needed
-  int attempts = 0;
-  do {
-    scale.tare(128);
-    delay(50);
-  } while (fabsf(scale.getWeightKg(true)) > ZERO_THRESHOLD_KG && ++attempts < 3);
+  // Clear status and show Zeroing...
+  if (lcdOK) {
+    lcd.printLine(0, "");
+    if (LCD_ROWS > 1) lcd.printLine(1, "");
+    if (LCD_ROWS > 2) lcd.printLine(2, "");
+    if (LCD_ROWS > 3) lcd.printLine(3, "Zeroing...");
+  }
+
+  // Quick zero before first weight
+  scale.tare(32);
+  delay(20);
 
   float zeroKg = scale.getWeightKg(true);
   scaleReady = (fabsf(zeroKg) <= ZERO_THRESHOLD_KG);
   if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, scaleReady ? "Ready             " : "Zero failed       ");
+
   state = Idle;
   clearBuf();
   zeroStartMs = 0;
-
-  // Remove initial "ID:" label to match new flow
   if (!scaleReady) Serial.println("Zeroing did not reach threshold");
 }
 
+// Clamp small values to avoid printing -0.00
 static void showWeight(float kg) {
-  // Clamp small values to avoid printing -0.00
   if (fabsf(kg) < DISPLAY_ZERO_CLAMP_KG) kg = 0.0f;
   char l0[21];
   snprintf(l0, sizeof(l0), "Weight %6.2f kg", kg);
@@ -171,39 +170,44 @@ static void doSendData(const String &id, float kg) {
 }
 
 void loop() {
-  if (!lcdOK) { delay(500); return; }
+  if (!lcdOK) { delay(400); return; }
 
+  // Always read live weight, but only display numeric in allowed states
   float kg = scale.getWeightKg(true);
-  showWeight(kg);
 
   bool present = fabsf(kg) > WEIGHT_DETECT_THRESHOLD_KG;
   bool isZero = fabsf(kg) <= ZERO_THRESHOLD_KG;
 
+  // Update stability buffer
   pushWeight(kg);
   float stddev = bufferStdDev();
 
   switch (state) {
     case Idle:
+      // Show live weight only in Idle (no load or steady zero)
+      showWeight(kg);
       if (present) {
         state = Weighing;
         stableStartMs = 0;
         clearBuf();
-        if (LCD_ROWS > 3) lcd.printLine(3, "Weighing...");
-        // Clear prompts
+        lcd.printLine(0, "Weighing...");         // hide numeric while unstable
         if (LCD_ROWS > 1) lcd.printLine(1, "");
         if (LCD_ROWS > 2) lcd.printLine(2, "");
+        if (LCD_ROWS > 3) lcd.printLine(3, "");
       }
       break;
 
     case Weighing:
+      // Keep showing only "Weighing..." while unstable
+      lcd.printLine(0, "Weighing...");
       if (stddev < STABLE_STDDEV_KG) {
         if (stableStartMs == 0) stableStartMs = millis();
         if (millis() - stableStartMs >= STABLE_MIN_MS) {
           stableWeightKg = bufferMean();
           state = AskId;
-          // Show prompt to scan on line 2
-          if (LCD_ROWS > 1) lcd.printLine(1, "");
+          showWeight(stableWeightKg);           // show numeric only when stable
           if (LCD_ROWS > 2) lcd.printLine(2, "Please Scan The ID");
+          if (LCD_ROWS > 1) lcd.printLine(1, "");
           if (LCD_ROWS > 3) lcd.printLine(3, "");
           zeroStartMs = 0;
         }
@@ -219,18 +223,17 @@ void loop() {
       break;
 
     case AskId: {
+      // Keep showing the stable weight while asking for ID
+      showWeight(stableWeightKg);
       String id;
       bool scanned = rfidOK && rfid.poll(id) && id.length() > 0;
       if (scanned) {
-        // Show sending + removal prompts
-        if (LCD_ROWS > 1) lcd.printLine(1, "Sending Data please");
-        if (LCD_ROWS > 2) lcd.printLine(2, "Wait....");
-        doSendData(id, stableWeightKg);
         if (LCD_ROWS > 1) lcd.printLine(1, "Sending Data please Wait....");
         if (LCD_ROWS > 2) lcd.printLine(2, "Please Remove The weight..");
+        doSendData(id, stableWeightKg);
         state = AwaitRemoval;
       } else {
-        // If weight goes to zero and stays zero for timeout, reset to idle
+        // If weight returns to zero and stays zero for timeout, reset
         if (isZero) {
           if (zeroStartMs == 0) zeroStartMs = millis();
           if (millis() - zeroStartMs >= NO_ID_ZERO_TIMEOUT_MS) {
@@ -247,11 +250,12 @@ void loop() {
     }
 
     case Sending:
-      // not used
+      // unused (merged into AskId/AwaitRemoval)
       break;
 
     case AwaitRemoval:
-      // Retain text until weight is removed; then return to idle
+      // Keep prompts; return to Idle when zero (then live numeric resumes)
+      showWeight(stableWeightKg);
       if (isZero) {
         state = Idle;
         if (LCD_ROWS > 1) lcd.printLine(1, "");
@@ -267,7 +271,7 @@ void loop() {
     char cmd = (char)Serial.read();
     if (cmd == 't' || cmd == 'T') {
       if (LCD_ROWS > 3) lcd.printLine(3, "Tare...");
-      scale.tare(64);
+      scale.tare(32);
       float zeroKg2 = scale.getWeightKg(true);
       scaleReady = (fabsf(zeroKg2) <= ZERO_THRESHOLD_KG);
       if (LCD_ROWS > 3) lcd.printLine(3, scaleReady ? "Tare done" : "Tare not zero");
@@ -278,5 +282,5 @@ void loop() {
     }
   }
 
-  delay(250);
+  delay(200);
 }

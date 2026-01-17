@@ -18,7 +18,7 @@ bool ScaleManager::begin() {
 
   // Basic NAU config
   g_scale.setGain(NAU7802_GAIN_128);
-  g_scale.setSampleRate(NAU7802_SPS_10);   // stable
+  g_scale.setSampleRate(NAU7802_SPS_20);   // faster updates, still stable
   g_scale.setChannel(NAU7802_CHANNEL_1);
 
   // Calibrate analog front-end
@@ -27,25 +27,25 @@ bool ScaleManager::begin() {
     return false;
   }
 
-  // Let it settle and discard early conversions
-  delay(1200);
-  for (int i = 0; i < 12; i++) {
+  // Let it settle and discard early conversions (shortened)
+  delay(400);
+  for (int i = 0; i < 6; i++) {
     (void)g_scale.getReading();
-    delay(10);
+    delay(5);
   }
 
   // Set a calibration factor (grams scaling). We'll flip sign if needed.
-  calFactor_ = SCALE_CAL_FACTOR_DEFAULT;     // magnitude
+  calFactor_ = SCALE_CAL_FACTOR_DEFAULT;
   g_scale.setCalibrationFactor(calFactor_);
 
-  // ✅ FORCE tare at boot: whatever is on the scale becomes zero
-  tare(64);
+  // Shorter tare at boot
+  tare(24);
 
   // Fix direction if putting weight makes reading negative
   autoFixDirection();
 
   // Small final tare after any direction change
-  tare(16);
+  tare(8);
 
   initialized_ = true;
   return true;
