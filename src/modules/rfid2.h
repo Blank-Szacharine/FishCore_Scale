@@ -15,6 +15,10 @@ class RFID2 {
   bool poll(String &id);
   const String &lastId() const;
 
+  // New lightweight accessors
+  inline bool ready() const { return connected_; }
+  inline uint8_t address() const { return addr_; }
+
  private:
   TwoWire *wire_ = nullptr;
   uint8_t addr_ = 0x00;
