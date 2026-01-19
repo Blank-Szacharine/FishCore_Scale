@@ -241,7 +241,23 @@ void loop() {
       break;
 
     case AskId: {
-      // Keep showing the stable weight while asking for ID
+      // If the weight has changed significantly from the last
+      // stable value while waiting for an ID, treat this as a
+      // new weighing cycle so additional weight can be added
+      // on top of a previous reading.
+      if (present && fabsf(kg - stableWeightKg) > WEIGHT_DETECT_THRESHOLD_KG) {
+        state = Weighing;
+        stableStartMs = 0;
+        weighingStartMs = millis();
+        clearBuf();
+        lcd.printLine(0, "Weighing...");
+        if (LCD_ROWS > 1) lcd.printLine(1, "");
+        if (LCD_ROWS > 2) lcd.printLine(2, "");
+        if (LCD_ROWS > 3) lcd.printLine(3, "");
+        break;
+      }
+
+      // Keep showing the last stable weight while asking for ID
       showWeight(stableWeightKg);
       String id;
       bool scanned = rfidOK && rfid.poll(id) && id.length() > 0;
@@ -272,6 +288,20 @@ void loop() {
       break;
 
     case AwaitRemoval:
+      // If weight increases significantly while waiting for removal,
+      // start a new weighing cycle for the new combined weight.
+      if (present && fabsf(kg - stableWeightKg) > WEIGHT_DETECT_THRESHOLD_KG) {
+        state = Weighing;
+        stableStartMs = 0;
+        weighingStartMs = millis();
+        clearBuf();
+        lcd.printLine(0, "Weighing...");
+        if (LCD_ROWS > 1) lcd.printLine(1, "");
+        if (LCD_ROWS > 2) lcd.printLine(2, "");
+        if (LCD_ROWS > 3) lcd.printLine(3, "");
+        break;
+      }
+
       // Keep prompts; return to Idle when zero (then live numeric resumes)
       showWeight(stableWeightKg);
       if (isZero) {
