@@ -39,8 +39,8 @@
 // ---------------- Weight detection/stability ----------------
 #define WEIGHT_DETECT_THRESHOLD_KG 0.05f     // weight present threshold
 #define ZERO_THRESHOLD_KG          0.02f     // zero band
-#define STABLE_STDDEV_KG           0.007f    // slightly looser threshold for faster lock
-#define STABLE_MIN_MS              600       // must be stable for this long (ms)
+#define STABLE_STDDEV_KG           0.007f    // stability stddev threshold
+#define STABLE_MIN_MS              3000      // must be stable for this long (ms)
 #define NO_ID_ZERO_TIMEOUT_MS      5000      // if no ID scanned, reset after zero held this long
 
 // If the weight never becomes "stable" (stddev below threshold) while present,
