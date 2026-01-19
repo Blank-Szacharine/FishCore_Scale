@@ -104,12 +104,13 @@ void ScaleManager::autoFixDirection() {
 float ScaleManager::getWeightKg(bool averaged) {
   if (!initialized_) return 0.0f;
 
-  const uint8_t samples = averaged ? 8 : 1;
+  // Fewer samples and no extra delay: rely on the NAU7802's own
+  // filtering plus the higher-level stability buffer in main.cpp.
+  const uint8_t samples = averaged ? 4 : 1;
   float sumGrams = 0.0f;
 
   for (uint8_t i = 0; i < samples; i++) {
     sumGrams += g_scale.getWeight(true); // grams
-    delay(2);
   }
 
   float grams = sumGrams / samples;

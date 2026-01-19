@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <LiquidCrystal_PCF8574.h>
+#include "config.h"
 
 class LCDDisplay {
  public:
@@ -15,6 +16,9 @@ class LCDDisplay {
   bool initialized_ = false;
   uint8_t address_ = 0x00;
   LiquidCrystal_PCF8574 *lcd_ = nullptr;
+
+  // Simple per-row cache to avoid re-writing identical content over I2C.
+  String lastLines_[LCD_ROWS];
 
   void clearRow(uint8_t row);
 };
