@@ -43,6 +43,11 @@
 #define STABLE_MIN_MS              600       // must be stable for this long (ms)
 #define NO_ID_ZERO_TIMEOUT_MS      5000      // if no ID scanned, reset after zero held this long
 
+// If the weight never becomes "stable" (stddev below threshold) while present,
+// after this many milliseconds we will fall back to the average of the buffer
+// and use that as the displayed/recorded weight.
+#define WEIGHING_TIMEOUT_MS        3000
+
 // ---------------- Display clamp ----------------
 // Prevent -0.00 by clamping very small values to +0.00 before formatting
 #define DISPLAY_ZERO_CLAMP_KG      0.005f

@@ -36,6 +36,8 @@ AppState state = Idle;
 unsigned long stableStartMs = 0;
 unsigned long zeroStartMs = 0;
 float stableWeightKg = 0.0f;
+// Track how long we've been in the Weighing state with weight present
+unsigned long weighingStartMs = 0;
 
 static void showCentered(uint8_t row, const String &text) {
   // Simple helper to center small messages on the LCD
@@ -189,6 +191,7 @@ void loop() {
       if (present) {
         state = Weighing;
         stableStartMs = 0;
+        weighingStartMs = millis();
         clearBuf();
         lcd.printLine(0, "Weighing...");         // hide numeric while unstable
         if (LCD_ROWS > 1) lcd.printLine(1, "");
@@ -213,6 +216,21 @@ void loop() {
         }
       } else {
         stableStartMs = 0;
+      }
+
+      // If the weight stays present but never reaches the strict
+      // stability criteria within WEIGHING_TIMEOUT_MS, fall back
+      // to using the average of the buffer as a "best effort"
+      // stable value so the user still gets a reading.
+      if (present && weighingStartMs != 0 &&
+          (millis() - weighingStartMs) >= WEIGHING_TIMEOUT_MS) {
+        stableWeightKg = bufferMean();
+        state = AskId;
+        showWeight(stableWeightKg);
+        if (LCD_ROWS > 2) lcd.printLine(2, "Please Scan The ID");
+        if (LCD_ROWS > 1) lcd.printLine(1, "");
+        if (LCD_ROWS > 3) lcd.printLine(3, "");
+        zeroStartMs = 0;
       }
       if (!present) {
         state = Idle;
