@@ -119,5 +119,8 @@ float ScaleManager::getWeightKg(bool averaged) {
   // deadband near zero
   if (fabsf(kg) < 0.002f) kg = 0.0f;
 
-  return kg; // keep sign (do NOT force abs)
+  // Ensure reported weight is never negative
+  if (kg < 0.0f) kg = -kg;
+
+  return kg;
 }

@@ -25,8 +25,8 @@ bool scaleReady = false;
 // New: track WiFi
 bool wifiOK = false;
 
-// New: simple stability buffer
-static const int kBufN = 16;
+// New: simple stability buffer (smaller for faster lock)
+static const int kBufN = 10;
 float wBuf[kBufN] = {0};
 int wIdx = 0, wCnt = 0;
 
