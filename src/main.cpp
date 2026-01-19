@@ -281,6 +281,7 @@ void loop() {
       clearBuf();
     }
   }
-
-  delay(200);
+  // Shorter loop delay for snappier interaction. Overall stability
+  // is still governed by STABLE_MIN_MS and the rolling buffer.
+  delay(100);
 }

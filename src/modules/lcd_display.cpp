@@ -49,16 +49,21 @@ bool LCDDisplay::begin(TwoWire &wire, uint8_t &detectedAddress) {
 
 void LCDDisplay::clearRow(uint8_t row) {
   if (!initialized_) return;
+  if (row >= LCD_ROWS) return;
   lcd_->setCursor(0, row);
   for (int i = 0; i < LCD_COLS; i++) lcd_->print(" ");
 }
 
 void LCDDisplay::printLine(uint8_t row, const String &text) {
   if (!initialized_) return;
+  if (row >= LCD_ROWS) return;
   String t = text;
   if ((int)t.length() > LCD_COLS) {
     t = t.substring(0, LCD_COLS);
   }
+  // Skip I2C update if content for this row is unchanged.
+  if (t == lastLines_[row]) return;
+  lastLines_[row] = t;
   clearRow(row);
   lcd_->setCursor(0, row);
   lcd_->print(t);
