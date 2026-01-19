@@ -228,8 +228,8 @@ void loop() {
       String id;
       bool scanned = rfidOK && rfid.poll(id) && id.length() > 0;
       if (scanned) {
-        if (LCD_ROWS > 1) lcd.printLine(1, "Sending Data please Wait....");
-        if (LCD_ROWS > 2) lcd.printLine(2, "Please Remove The weight..");
+        if (LCD_ROWS > 1) lcd.printLine(1, "Sending Data Wait....");
+        if (LCD_ROWS > 2) lcd.printLine(2, "Remove The weight..");
         doSendData(id, stableWeightKg);
         state = AwaitRemoval;
       } else {
