@@ -48,6 +48,10 @@
 // and use that as the displayed/recorded weight.
 #define WEIGHING_TIMEOUT_MS        3000
 
-// ---------------- Display clamp ----------------
-// Prevent -0.00 by clamping very small values to +0.00 before formatting
+// ---------------- Display / minimum effective weight ----------------
+// Treat anything at or below this as zero (e.g. tray weight).
+// 0.30 kg = 300 g
+#define MIN_EFFECTIVE_WEIGHT_KG    0.30f
+
+// Optional fine clamp to avoid -0.00 when very close to zero
 #define DISPLAY_ZERO_CLAMP_KG      0.005f

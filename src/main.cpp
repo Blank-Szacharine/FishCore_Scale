@@ -1,4 +1,4 @@
-// ESP32 + NAU7802 load cell with 20x4 I2C LCD
+// ESP32 + NAU7802 + 20x4 I2C LCD
 #include <Arduino.h>
 #include <Wire.h>
 #include <math.h>
@@ -8,39 +8,41 @@
 #include "modules/scale.h"
 #include "modules/rfid2.h"
 
-// LCD on default I2C (pins from config.h)
+// LCD over I2C
 LCDDisplay lcd;
 bool lcdOK = false;
 uint8_t lcdAddr = 0x00;
 
-// Scale manager encapsulates NAU7802 logic
+// Load cell / NAU7802
 ScaleManager scale;
 
-// RFID2 on same I2C bus as LCD
+// RFID2 on same I2C bus
 RFID2 rfid;
 bool rfidOK = false;
 
-// Track when the scale finished zeroing successfully
 bool scaleReady = false;
-// New: track WiFi
+// WiFi status
 bool wifiOK = false;
 
-// New: simple stability buffer (smaller for faster lock)
+// Stability buffer
 static const int kBufN = 10;
 float wBuf[kBufN] = {0};
 int wIdx = 0, wCnt = 0;
 
-// New: app states
 enum AppState { Idle, Weighing, AskId, Sending, AwaitRemoval };
 AppState state = Idle;
 unsigned long stableStartMs = 0;
 unsigned long zeroStartMs = 0;
 float stableWeightKg = 0.0f;
-// Track how long we've been in the Weighing state with weight present
 unsigned long weighingStartMs = 0;
 
+static float effectiveWeight(float kg) {
+  float a = fabsf(kg);
+  if (a <= MIN_EFFECTIVE_WEIGHT_KG || a < DISPLAY_ZERO_CLAMP_KG) return 0.0f;
+  return kg;
+}
+
 static void showCentered(uint8_t row, const String &text) {
-  // Simple helper to center small messages on the LCD
   String t = text;
   if (t.length() < LCD_COLS) {
     int pad = (LCD_COLS - t.length()) / 2;
@@ -63,7 +65,6 @@ bool initScale() {
     lcdStatus("LOAD CELL NOT FOUND", "Check wiring & power");
     return false;
   }
-  // Calibration completed successfully
   return true;
 }
 
@@ -105,12 +106,10 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
-  // Init I2C
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   Wire.setClock(100000);
   delay(20);
 
-  // Initialize LCD
   lcdOK = lcd.begin(Wire, lcdAddr);
   if (lcdOK) {
     lcd.printLine(0, "Calibrating...");
@@ -119,23 +118,19 @@ void setup() {
     Serial.println("LCD FAIL");
   }
 
-  // Initialize RFID2 (status on line 1)
   delay(10);
   rfidOK = rfid.begin(Wire);
   if (lcdOK && LCD_ROWS > 1) {
     lcd.printLine(1, rfidOK ? "RFID Ready..." : "RFID Not Found");
   }
 
-  // Connect to WiFi and show status on line 2
   wifiOK = connectWifi();
   if (lcdOK && LCD_ROWS > 2) {
     lcd.printLine(2, wifiOK ? "Internet Ready..." : "Internet Not Ready");
   }
 
-  // Initialize scale (module tares automatically)
   if (!initScale()) return;
 
-  // Clear status and show Zeroing...
   if (lcdOK) {
     lcd.printLine(0, "");
     if (LCD_ROWS > 1) lcd.printLine(1, "");
@@ -143,7 +138,6 @@ void setup() {
     if (LCD_ROWS > 3) lcd.printLine(3, "Zeroing...");
   }
 
-  // Quick zero before first weight
   scale.tare(32);
   delay(20);
 
@@ -157,16 +151,15 @@ void setup() {
   if (!scaleReady) Serial.println("Zeroing did not reach threshold");
 }
 
-// Clamp small values to avoid printing -0.00
 static void showWeight(float kg) {
-  if (fabsf(kg) < DISPLAY_ZERO_CLAMP_KG) kg = 0.0f;
+  kg = effectiveWeight(kg);
   char l0[21];
   snprintf(l0, sizeof(l0), "Weight %6.2f kg", kg);
   lcd.printLine(0, String(l0));
 }
 
 static void doSendData(const String &id, float kg) {
-  // Placeholder for HTTP/MQTT post
+  // TODO: replace with HTTP/MQTT send
   Serial.printf("Sending: ID=%s, Weight=%.2f kg\n", id.c_str(), kg);
   delay(200);
 }
@@ -174,11 +167,12 @@ static void doSendData(const String &id, float kg) {
 void loop() {
   if (!lcdOK) { delay(400); return; }
 
-  // Always read live weight, but only display numeric in allowed states
   float kg = scale.getWeightKg(true);
+  float absKg = fabsf(kg);
 
-  bool present = fabsf(kg) > WEIGHT_DETECT_THRESHOLD_KG;
-  bool isZero = fabsf(kg) <= ZERO_THRESHOLD_KG;
+  // Anything at or below MIN_EFFECTIVE_WEIGHT_KG (300 g) behaves as zero
+  bool present = absKg > fmaxf(WEIGHT_DETECT_THRESHOLD_KG, MIN_EFFECTIVE_WEIGHT_KG);
+  bool isZero  = absKg <= fmaxf(ZERO_THRESHOLD_KG, MIN_EFFECTIVE_WEIGHT_KG);
 
   // Update stability buffer
   pushWeight(kg);
@@ -186,14 +180,13 @@ void loop() {
 
   switch (state) {
     case Idle:
-      // Show live weight only in Idle (no load or steady zero)
       showWeight(kg);
       if (present) {
         state = Weighing;
         stableStartMs = 0;
         weighingStartMs = millis();
         clearBuf();
-        lcd.printLine(0, "Weighing...");         // hide numeric while unstable
+        lcd.printLine(0, "Weighing...");
         if (LCD_ROWS > 1) lcd.printLine(1, "");
         if (LCD_ROWS > 2) lcd.printLine(2, "");
         if (LCD_ROWS > 3) lcd.printLine(3, "");
@@ -201,14 +194,13 @@ void loop() {
       break;
 
     case Weighing:
-      // Keep showing only "Weighing..." while unstable
       lcd.printLine(0, "Weighing...");
       if (stddev < STABLE_STDDEV_KG) {
         if (stableStartMs == 0) stableStartMs = millis();
         if (millis() - stableStartMs >= STABLE_MIN_MS) {
           stableWeightKg = bufferMean();
           state = AskId;
-          showWeight(stableWeightKg);           // show numeric only when stable
+          showWeight(stableWeightKg);
           if (LCD_ROWS > 2) lcd.printLine(2, "Please Scan The ID");
           if (LCD_ROWS > 1) lcd.printLine(1, "");
           if (LCD_ROWS > 3) lcd.printLine(3, "");
@@ -218,10 +210,7 @@ void loop() {
         stableStartMs = 0;
       }
 
-      // If the weight stays present but never reaches the strict
-      // stability criteria within WEIGHING_TIMEOUT_MS, fall back
-      // to using the average of the buffer as a "best effort"
-      // stable value so the user still gets a reading.
+      // Fallback: use buffer mean if not stable before timeout
       if (present && weighingStartMs != 0 &&
           (millis() - weighingStartMs) >= WEIGHING_TIMEOUT_MS) {
         stableWeightKg = bufferMean();
@@ -241,10 +230,7 @@ void loop() {
       break;
 
     case AskId: {
-      // If the weight has changed significantly from the last
-      // stable value while waiting for an ID, treat this as a
-      // new weighing cycle so additional weight can be added
-      // on top of a previous reading.
+      // Restart weighing if weight changes a lot while waiting for ID
       if (present && fabsf(kg - stableWeightKg) > WEIGHT_DETECT_THRESHOLD_KG) {
         state = Weighing;
         stableStartMs = 0;
@@ -257,7 +243,6 @@ void loop() {
         break;
       }
 
-      // Keep showing the last stable weight while asking for ID
       showWeight(stableWeightKg);
       String id;
       bool scanned = rfidOK && rfid.poll(id) && id.length() > 0;
@@ -267,7 +252,7 @@ void loop() {
         doSendData(id, stableWeightKg);
         state = AwaitRemoval;
       } else {
-        // If weight returns to zero and stays zero for timeout, reset
+        // If weight returns to zero and stays there, reset
         if (isZero) {
           if (zeroStartMs == 0) zeroStartMs = millis();
           if (millis() - zeroStartMs >= NO_ID_ZERO_TIMEOUT_MS) {
@@ -284,12 +269,11 @@ void loop() {
     }
 
     case Sending:
-      // unused (merged into AskId/AwaitRemoval)
+      // Unused (merged into AskId/AwaitRemoval)
       break;
 
     case AwaitRemoval:
-      // If weight increases significantly while waiting for removal,
-      // start a new weighing cycle for the new combined weight.
+      // New weighing cycle if weight increases while waiting
       if (present && fabsf(kg - stableWeightKg) > WEIGHT_DETECT_THRESHOLD_KG) {
         state = Weighing;
         stableStartMs = 0;
@@ -302,7 +286,6 @@ void loop() {
         break;
       }
 
-      // Keep prompts; return to Idle when zero (then live numeric resumes)
       showWeight(stableWeightKg);
       if (isZero) {
         state = Idle;
@@ -314,7 +297,7 @@ void loop() {
       break;
   }
 
-  // Optional serial control: 't' to re-tare
+  // Serial control: 't' to tare
   if (Serial.available()) {
     char cmd = (char)Serial.read();
     if (cmd == 't' || cmd == 'T') {
@@ -329,7 +312,7 @@ void loop() {
       clearBuf();
     }
   }
-  // Shorter loop delay for snappier interaction. Overall stability
-  // is still governed by STABLE_MIN_MS and the rolling buffer.
+  // Shorter loop delay for interaction. Overall stability
+  // is still governed by STABLE_MIN_MS and the buffer.
   delay(100);
 }
