@@ -3,6 +3,8 @@
 #include <Wire.h>
 #include <math.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include "config.h"
 #include "modules/lcd_display.h"
 #include "modules/scale.h"
@@ -23,6 +25,11 @@ bool rfidOK = false;
 bool scaleReady = false;
 // WiFi status
 bool wifiOK = false;
+
+// Server endpoint (GET)
+static const char *UPLOAD_BASE_URL = "https://actual.fishcore.ph/uploadWeightIns";
+static const int UPLOAD_ID = 1;
+static const int UPLOAD_SCALE_ID = 1;
 
 // Stability buffer
 static const int kBufN = 10;
@@ -102,6 +109,12 @@ static bool connectWifi() {
   return WiFi.status() == WL_CONNECTED;
 }
 
+static bool ensureWifiConnected() {
+  if (WiFi.status() == WL_CONNECTED) return true;
+  wifiOK = connectWifi();
+  return wifiOK;
+}
+
 void setup() {
   Serial.begin(115200);
   delay(100);
@@ -159,8 +172,50 @@ static void showWeight(float kg) {
 }
 
 static void doSendData(const String &id, float kg) {
-  // TODO: replace with HTTP/MQTT send
-  Serial.printf("Sending: ID=%s, Weight=%.2f kg\n", id.c_str(), kg);
+  // Build URL: https://actual.fishcore.ph/uploadWeightIns/1/{IdNumber}/1/{Weight}
+  // id = 1 (fixed), scaleId = 1 (fixed), IdNumber = scanned RFID, Weight = stable weight
+  const float effectiveKg = effectiveWeight(kg);
+  String url = String(UPLOAD_BASE_URL) + "/" + String(UPLOAD_ID) + "/" + id + "/" + String(UPLOAD_SCALE_ID) + "/" + String(effectiveKg, 2);
+
+  Serial.printf("Uploading GET: %s\n", url.c_str());
+
+  if (!ensureWifiConnected()) {
+    Serial.println("WiFi not connected; upload skipped");
+    if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "No internet       ");
+    delay(200);
+    return;
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure(); // avoids TLS cert issues; use CA cert if you want verification
+
+  HTTPClient http;
+  if (!http.begin(client, url)) {
+    Serial.println("HTTP begin failed");
+    if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "HTTP begin failed ");
+    delay(200);
+    return;
+  }
+
+  http.setTimeout(6000);
+  int httpCode = http.GET();
+  if (httpCode > 0) {
+    Serial.printf("HTTP %d\n", httpCode);
+    if (httpCode >= 200 && httpCode < 300) {
+      if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "Sent OK           ");
+    } else {
+      if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "Send failed       ");
+      String payload = http.getString();
+      if (payload.length() > 0) {
+        Serial.println(payload);
+      }
+    }
+  } else {
+    Serial.printf("HTTP GET failed: %s\n", http.errorToString(httpCode).c_str());
+    if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "HTTP GET failed   ");
+  }
+
+  http.end();
   delay(200);
 }
 
