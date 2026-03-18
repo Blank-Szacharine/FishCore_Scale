@@ -27,7 +27,7 @@ bool scaleReady = false;
 bool wifiOK = false;
 
 // Server endpoint (GET)
-static const char *UPLOAD_BASE_URL = "https://actual.fishcore.ph/uploadWeightIns";
+static const char *UPLOAD_BASE_URL = "https://fishcore.ph/uploadWeightIns";
 static const int UPLOAD_ID = 1;
 static const int UPLOAD_SCALE_ID = 1;
 
