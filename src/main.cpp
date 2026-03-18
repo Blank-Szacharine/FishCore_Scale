@@ -9,6 +9,7 @@
 #include "modules/lcd_display.h"
 #include "modules/scale.h"
 #include "modules/rfid2.h"
+#include "modules/wifi_manager.h"
 
 // LCD over I2C
 LCDDisplay lcd;
@@ -25,6 +26,14 @@ bool rfidOK = false;
 bool scaleReady = false;
 // WiFi status
 bool wifiOK = false;
+
+// Wi-Fi manager (saved credentials + AP fallback config portal)
+WiFiManager wifiMgr;
+bool wifiConfigMode = false;
+
+// Wi-Fi timeouts
+static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 8000;
+static const uint32_t WIFI_RECONNECT_TIMEOUT_MS = 2500;
 
 // Server endpoint (GET)
 static const char *UPLOAD_BASE_URL = "https://actual.fishcore.ph/uploadWeightIns";
@@ -99,22 +108,6 @@ static void pushWeight(float kg) {
 
 static void clearBuf() { wIdx = 0; wCnt = 0; }
 
-static bool connectWifi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 2500) { // shortened
-    delay(150);
-  }
-  return WiFi.status() == WL_CONNECTED;
-}
-
-static bool ensureWifiConnected() {
-  if (WiFi.status() == WL_CONNECTED) return true;
-  wifiOK = connectWifi();
-  return wifiOK;
-}
-
 void setup() {
   Serial.begin(115200);
   delay(100);
@@ -137,9 +130,28 @@ void setup() {
     lcd.printLine(1, rfidOK ? "RFID Ready..." : "RFID Not Found");
   }
 
-  wifiOK = connectWifi();
+  // 1) Try saved Wi-Fi credentials from NVS (Preferences)
+  // 2) If missing/failed, try compile-time defaults from config.h
+  // 3) If still failed, start AP mode and host a small config web page
+  WiFiManager::Credentials fallback;
+  fallback.ssid = String(WIFI_SSID);
+  fallback.password = String(WIFI_PASS);
+  wifiOK = wifiMgr.begin(WIFI_CONNECT_TIMEOUT_MS, fallback);
+  wifiConfigMode = wifiMgr.isConfigPortalActive();
+
   if (lcdOK && LCD_ROWS > 2) {
-    lcd.printLine(2, wifiOK ? "Internet Ready..." : "Internet Not Ready");
+    lcd.printLine(2, wifiOK ? "Internet Ready..." : "WiFi Setup Mode...");
+  }
+
+  // If we entered config portal mode, don't run the scale logic.
+  // Connect your phone/PC to the shown AP SSID, then open the shown IP.
+  if (wifiConfigMode) {
+    if (lcdOK) {
+      lcd.printLine(0, "WiFi CONFIG (AP)");
+      if (LCD_ROWS > 1) lcd.printLine(1, wifiMgr.apSsid());
+      if (LCD_ROWS > 3) lcd.printLine(3, wifiMgr.apIp());
+    }
+    return;
   }
 
   if (!initScale()) return;
@@ -179,7 +191,7 @@ static void doSendData(const String &id, float kg) {
 
   Serial.printf("Uploading GET: %s\n", url.c_str());
 
-  if (!ensureWifiConnected()) {
+  if (!wifiMgr.ensureConnected(WIFI_RECONNECT_TIMEOUT_MS)) {
     Serial.println("WiFi not connected; upload skipped");
     if (lcdOK && LCD_ROWS > 3) lcd.printLine(3, "No internet       ");
     delay(200);
@@ -220,6 +232,43 @@ static void doSendData(const String &id, float kg) {
 }
 
 void loop() {
+  // Serial control:
+  // - 't' to tare
+  // - 'c' to clear saved Wi-Fi credentials and restart
+  if (Serial.available()) {
+    const char cmd = (char)Serial.read();
+    if (cmd == 'c' || cmd == 'C') {
+      if (lcdOK && LCD_ROWS > 0) lcd.printLine(0, "Clearing WiFi...");
+      wifiMgr.clearSavedCredentials();
+      delay(300);
+      ESP.restart();
+    }
+
+    // existing tare behavior
+    if (cmd == 't' || cmd == 'T') {
+      if (wifiConfigMode) {
+        if (lcdOK && LCD_ROWS > 0) lcd.printLine(0, "Exit WiFi setup");
+        return;
+      }
+      if (LCD_ROWS > 3) lcd.printLine(3, "Tare...");
+      scale.tare(32);
+      float zeroKg2 = scale.getWeightKg(true);
+      scaleReady = (fabsf(zeroKg2) <= ZERO_THRESHOLD_KG);
+      if (LCD_ROWS > 3) lcd.printLine(3, scaleReady ? "Tare done" : "Tare not zero");
+      state = Idle;
+      if (LCD_ROWS > 1) lcd.printLine(1, "");
+      if (LCD_ROWS > 2) lcd.printLine(2, "");
+      clearBuf();
+    }
+  }
+
+  // Wi-Fi AP config portal mode: only serve the config web page.
+  if (wifiConfigMode) {
+    wifiMgr.loop();
+    delay(10);
+    return;
+  }
+
   if (!lcdOK) { delay(400); return; }
 
   float kg = scale.getWeightKg(true);
@@ -352,21 +401,6 @@ void loop() {
       break;
   }
 
-  // Serial control: 't' to tare
-  if (Serial.available()) {
-    char cmd = (char)Serial.read();
-    if (cmd == 't' || cmd == 'T') {
-      if (LCD_ROWS > 3) lcd.printLine(3, "Tare...");
-      scale.tare(32);
-      float zeroKg2 = scale.getWeightKg(true);
-      scaleReady = (fabsf(zeroKg2) <= ZERO_THRESHOLD_KG);
-      if (LCD_ROWS > 3) lcd.printLine(3, scaleReady ? "Tare done" : "Tare not zero");
-      state = Idle;
-      if (LCD_ROWS > 1) lcd.printLine(1, "");
-      if (LCD_ROWS > 2) lcd.printLine(2, "");
-      clearBuf();
-    }
-  }
   // Shorter loop delay for interaction. Overall stability
   // is still governed by STABLE_MIN_MS and the buffer.
   delay(100);
